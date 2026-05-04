@@ -2,82 +2,93 @@ import socket
 import os
 import time
 
-HOST = '127.0.0.1'
+from smtp_router import route_email  # 👈 NEW (top of file)
+
+
+HOST = "127.0.0.1"
 PORT = 5000
 
-def get_provider(email):
-    domain = email.split("@")[1]
 
-    if "gmail" in domain:
-        return "gmail"
-    elif "yahoo" in domain:
-        return "yahoo"
-    elif "outlook" in domain:
-        return "outlook"
-    else:
-        return "unknown"
+def save_email(recipient, sender, subject, body):
+    folder = f"data/{recipient}"
+    os.makedirs(folder, exist_ok=True)
 
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.bind((HOST, PORT))
-server.listen()
+    filename = f"{int(time.time())}.txt"
+    filepath = os.path.join(folder, filename)
 
-print("Server running...")
+    with open(filepath, "w") as f:
+        f.write(f"From: {sender}\n")
+        f.write(f"To: {recipient}\n")
+        f.write(f"Subject: {subject}\n\n")
+        f.write(body)
 
-while True:
-    conn, addr = server.accept()
+    return filename
+
+
+def list_emails(recipient):
+    folder = f"data/{recipient}"
+    if not os.path.exists(folder):
+        return []
+
+    return os.listdir(folder)
+
+
+def read_email(recipient, filename):
+    filepath = f"data/{recipient}/{filename}"
+
+    if not os.path.exists(filepath):
+        return "Message not found."
+
+    with open(filepath, "r") as f:
+        return f.read()
+
+
+def handle_client(conn):
     data = conn.recv(4096).decode()
-
     parts = data.split("|")
+
     command = parts[0]
 
     if command == "send":
         sender = parts[1]
-        receiver = parts[2]
+        recipient = parts[2]
         subject = parts[3]
-        message = parts[4]
+        body = parts[4]
 
-        provider = get_provider(receiver)
+        # 🔥 NEW: Provider-aware routing
+        route_email(sender, recipient, subject, body)
 
-        folder = f"data/{provider}/{receiver}"
-        os.makedirs(folder, exist_ok=True)
-
-        filename = f"{int(time.time())}.txt"
-        filepath = os.path.join(folder, filename)
-
-        with open(filepath, "w") as f:
-            f.write(f"From: {sender}\n")
-            f.write(f"To: {receiver}\n")
-            f.write(f"Subject: {subject}\n\n")
-            f.write(message)
-
-        conn.send(f"Message saved to {filepath}".encode())
+        filename = save_email(recipient, sender, subject, body)
+        conn.send(f"Message saved as {filename}".encode())
 
     elif command == "list":
-        email = parts[1]
-        provider = get_provider(email)
-        folder = f"data/{provider}/{email}"
+        recipient = parts[1]
+        emails = list_emails(recipient)
 
-        if os.path.exists(folder):
-            files = os.listdir(folder)
-            conn.send("\n".join(files).encode())
-        else:
-            conn.send("No inbox found.".encode())
+        response = "\n".join(emails) if emails else "No messages."
+        conn.send(response.encode())
 
     elif command == "read":
-        email = parts[1]
+        recipient = parts[1]
         filename = parts[2]
 
-        provider = get_provider(email)
-        filepath = f"data/{provider}/{email}/{filename}"
-
-        if os.path.exists(filepath):
-            with open(filepath, "r") as f:
-                content = f.read()
-            conn.send(content.encode())
-        else:
-            conn.send("Message not found.".encode())
-
-    else:
-        conn.send("Unknown command.".encode())
+        message = read_email(recipient, filename)
+        conn.send(message.encode())
 
     conn.close()
+
+
+def start_server():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((HOST, PORT))
+    server.listen(5)
+
+    print(f"Server running on {HOST}:{PORT}")
+
+    while True:
+        conn, addr = server.accept()
+        handle_client(conn)
+
+
+if __name__ == "__main__":
+    start_server()
