@@ -1,53 +1,62 @@
-from config import SMTP_PROVIDERS
-import os
-from datetime import datetime
+import smtplib
+from email.message import EmailMessage
+from config import SMTP_PROVIDERS, GMAIL_USER, GMAIL_APP_PASSWORD, SMTP_MODE
 
 
-LOG_FOLDER = "logs"
-LOG_FILE = os.path.join(LOG_FOLDER, "provider.log")
-
-
-def detect_provider(email):
+def get_provider(email):
     domain = email.split("@")[-1].lower()
-
-    if domain in SMTP_PROVIDERS:
-        return SMTP_PROVIDERS[domain]
-
-    return {
+    return SMTP_PROVIDERS.get(domain, {
         "provider": "Unknown",
         "host": None,
         "port": None
+    })
+
+
+def route_email(sender, receiver):
+    provider_info = get_provider(receiver)
+
+    return {
+        "from": sender,
+        "to": receiver,
+        "provider": provider_info["provider"],
+        "host": provider_info["host"],
+        "port": provider_info["port"]
     }
 
 
-def write_provider_log(sender, recipient, provider_info):
-    os.makedirs(LOG_FOLDER, exist_ok=True)
+def send_email(sender, receiver, subject, body):
+    routing = route_email(sender, receiver)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if SMTP_MODE == "test":
+        return f"""
+TEST MODE - Email not actually sent.
 
-    log_entry = (
-        f"[{timestamp}] "
-        f"FROM={sender} "
-        f"TO={recipient} "
-        f"PROVIDER={provider_info['provider']} "
-        f"HOST={provider_info['host']} "
-        f"PORT={provider_info['port']}\n"
-    )
+Provider routing decision:
+From: {sender}
+To: {receiver}
+Provider: {routing['provider']}
+SMTP Host: {routing['host']}
+Port: {routing['port']}
+Subject: {subject}
+Message: {body}
+"""
 
-    with open(LOG_FILE, "a") as log_file:
-        log_file.write(log_entry)
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        return "Error: Gmail credentials are missing in .env file."
 
+    msg = EmailMessage()
+    msg["From"] = GMAIL_USER
+    msg["To"] = receiver
+    msg["Subject"] = subject
+    msg.set_content(body)
 
-def route_email(sender, recipient, subject, body):
-    provider_info = detect_provider(recipient)
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+            smtp.starttls()
+            smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            smtp.send_message(msg)
 
-    print("Provider routing decision:")
-    print(f"From: {sender}")
-    print(f"To: {recipient}")
-    print(f"Provider: {provider_info['provider']}")
-    print(f"SMTP Host: {provider_info['host']}")
-    print(f"Port: {provider_info['port']}")
+        return f"Email sent successfully to {receiver}"
 
-    write_provider_log(sender, recipient, provider_info)
-
-    return provider_info
+    except Exception as e:
+        return f"SMTP send failed: {e}"

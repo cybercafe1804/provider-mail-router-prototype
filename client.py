@@ -1,6 +1,6 @@
 import socket
 
-HOST = '127.0.0.1'
+HOST = "127.0.0.1"
 PORT = 5000
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -9,28 +9,19 @@ client.connect((HOST, PORT))
 command = input("Command (send/list): ")
 
 if command == "send":
-    sender = input("From: ")
-    receiver = input("To: ")
+    from_email = input("From: ")
+    to_email = input("To: ")
     subject = input("Subject: ")
-    message = input("Message: ")
+    body = input("Message: ")
 
-    full_message = f"send|{sender}|{receiver}|{subject}|{message}"
+    payload = f"{from_email}|{to_email}|{subject}|{body}"
+    client.send(payload.encode())
 
 elif command == "list":
-    email = input("Email: ")
-    full_message = f"list|{email}"
-
-elif command == "read":
-    email = input("Email: ")
-    filename = input("Filename: ")
-    full_message = f"read|{email}|{filename}"
-
-else:
-    full_message = "unknown"
-
-client.send(full_message.encode())
+    client.send("list".encode())
 
 response = client.recv(4096).decode()
+print("\nServer Response:")
 print(response)
 
 client.close()

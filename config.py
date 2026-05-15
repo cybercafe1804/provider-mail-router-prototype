@@ -1,3 +1,12 @@
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+SMTP_MODE = os.getenv("SMTP_MODE", "test")
+
 SMTP_PROVIDERS = {
     "gmail.com": {
         "provider": "Gmail",
@@ -35,4 +44,3 @@ SMTP_PROVIDERS = {
         "port": 465
     }
 }
-
