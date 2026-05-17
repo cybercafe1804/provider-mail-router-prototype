@@ -1,38 +1,69 @@
 import socket
-from smtp_router import send_email
+import os
+from dotenv import load_dotenv
+from smtp_router import get_smtp_provider
+
+load_dotenv()
 
 HOST = "0.0.0.0"
 PORT = 5000
 
+SMTP_MODE = os.getenv("SMTP_MODE", "test")
+
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind((HOST, PORT))
-server.listen(5)
+server.listen()
 
 print(f"Provider-Aware Mail Server running on {HOST}:{PORT}")
 
 while True:
-    conn, addr = server.accept()
-    print(f"\nConnection from {addr}")
+    client_socket, address = server.accept()
+
+    data = client_socket.recv(4096).decode()
+
+    if data.lower() == "list":
+        files = os.listdir("messages")
+
+        if not files:
+            response = "No stored messages found."
+        else:
+            response = "\n".join(files)
+
+        client_socket.send(response.encode())
+        client_socket.close()
+        continue
 
     try:
-        data = conn.recv(4096).decode()
+        from_email, to_email, subject, body = data.split("|")
 
-        sender, receiver, subject, body = data.split("|", 3)
+        filename = f"messages/{subject}.txt"
 
-        result = send_email(
-            sender,
-            receiver,
-            subject,
-            body
-        )
+        with open(filename, "w") as file:
+            file.write(f"FROM: {from_email}\n")
+            file.write(f"TO: {to_email}\n")
+            file.write(f"SUBJECT: {subject}\n")
+            file.write(f"MESSAGE: {body}\n")
 
-        print(result)
+        provider = get_smtp_provider(to_email)
 
-        conn.send(result.encode())
+        response = f"""
+TEST MODE - Email not actually sent.
+
+Provider routing decision:
+From: {from_email}
+To: {to_email}
+Provider: {provider['provider']}
+SMTP Host: {provider['host']}
+Port: {provider['port']}
+Subject: {subject}
+Message: {body}
+"""
+
+        client_socket.send(response.encode())
 
     except Exception as e:
-        error_message = f"Server Error: {e}"
-        print(error_message)
-        conn.send(error_message.encode())
+        error_message = f"Server Error: {str(e)}"
+        client_socket.send(error_message.encode())
 
-    conn.close()
+    client_socket.close()
+

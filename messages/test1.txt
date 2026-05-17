@@ -1,0 +1,4 @@
+FROM: user1@gmail.com
+TO: user2@gmail.com
+SUBJECT: test1
+MESSAGE: working
